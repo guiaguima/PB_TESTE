@@ -26,10 +26,31 @@ st.set_page_config(
 st.title("Sistema Integrado de Scraping e Previsão de ML")
 
 # ----------------------------------------------------------------------
-# NOVO: Inicialização do Session State
+# NOVO: Inicialização do Session State para armazenar dados
 # ----------------------------------------------------------------------
 if 'df_raspado' not in st.session_state:
-    st.session_state['df_raspado'] = pd.DataFrame() # DataFrame vazio inicialmente
+    st.session_state['df_raspado'] = pd.DataFrame() 
+
+# ----------------------------------------------------------------------
+# FUNÇÕES AUXILIARES DE TRATAMENTO
+# ----------------------------------------------------------------------
+
+def milhar_para_bicho(valor_numerico: int) -> int:
+    """Calcula o número do bicho (1 a 25) com base nos dois últimos dígitos do valor."""
+    if valor_numerico < 0:
+        return 0
+    
+    # Pega os dois últimos dígitos (dezena)
+    dezena = valor_numerico % 100
+    
+    # Se a dezena for 00, é o bicho 25 (Vaca)
+    if dezena == 0:
+        return 25
+    
+    # Calcula o bicho (1 a 25)
+    bicho = ((dezena - 1) // 4) + 1
+    
+    return min(bicho, 25) 
 
 # ----------------------------------------------------------------------
 # 1. Funções de Web Scraping
@@ -37,7 +58,7 @@ if 'df_raspado' not in st.session_state:
 
 @st.cache_data(ttl=3600) # Caches data for 1 hour
 def pegar_resultados(state: str, date: str):
-    """Busca resultados da API e retorna um DataFrame do Pandas."""
+    """Busca resultados da API e retorna um DataFrame do Pandas, convertendo a milhar para o número do Bicho."""
     url = "https://api.pontodobicho.com/bets/jb/results"
     params = {"state": state, "date": date}
 
@@ -67,12 +88,15 @@ def pegar_resultados(state: str, date: str):
                         valor_numerico = int(valor)
                     except ValueError:
                         continue 
+                        
+                    # CONVERSÃO PARA BICHO (A GRANDE MUDANÇA)
+                    numero_do_bicho = milhar_para_bicho(valor_numerico)
 
                     registros.append({
                         "lotteryName": nome,
                         "horario": horario,
                         "posicao": idx,
-                        "valor": valor_numerico,
+                        "valor": numero_do_bicho, # ARMAZENA O NÚMERO DO BICHO (1-25)
                         "state": state,
                         "date": date
                     })
@@ -134,7 +158,7 @@ def realizar_scraping_e_coletar_dados(estados, n_dias, intervalo_scraping):
 
 @st.cache_data
 def treinar_e_prever(df_total: pd.DataFrame, janela: int, n_passos: int, colunas_ml: list, modelo_selecionado: str):
-    """Treina o modelo ML escolhido e faz previsões, aplicando limites ao resultado."""
+    """Treina o modelo ML escolhido e faz previsões, aplicando limites ao resultado [1, 25]."""
     
     if len(df_total) < janela:
         return None, None, None, None
@@ -226,9 +250,12 @@ def treinar_e_prever(df_total: pd.DataFrame, janela: int, n_passos: int, colunas
     # Reverter normalização
     previsoes_inversa = scaler.inverse_transform(np.array(previsoes).reshape(-1, len(colunas_ml)))
 
-    # Aplicando Limite e Arredondamento
-    previsoes_finais = np.maximum(0, previsoes_inversa)
-    previsoes_finais = np.minimum(9999, np.round(previsoes_finais)).astype(int)
+    # APLICANDO LIMITE E ARREDONDAMENTO (AGORA [1, 25])
+    # Limite Inferior: Garante que os valores sejam >= 1
+    previsoes_finais = np.maximum(1, previsoes_inversa) 
+    
+    # Limite Superior: Arredonda e limita o valor máximo a 25
+    previsoes_finais = np.minimum(25, np.round(previsoes_finais)).astype(int)
     
     # Construir DataFrame de Previsões
     df_previsoes = pd.DataFrame(previsoes_finais, columns=colunas_ml)
@@ -264,7 +291,6 @@ estados_selecionados = st.sidebar.multiselect(
     default=estados_default
 )
 
-# NOVO BOTÃO PARA APENAS SCRAPING
 if st.sidebar.button("1. Executar Scraping e Salvar Dados"):
     if not estados_selecionados:
         st.error("Por favor, selecione pelo menos um estado para o scraping.")
@@ -278,7 +304,7 @@ if st.sidebar.button("1. Executar Scraping e Salvar Dados"):
     if not df_raspado.empty:
         # ARMAZENA O RESULTADO NO SESSION STATE
         st.session_state['df_raspado'] = df_raspado
-        st.subheader("Dados Raspados (Amostra)")
+        st.subheader(f"Dados Raspados (Amostra - {len(df_raspado)} linhas)")
         st.dataframe(df_raspado.tail(10)) 
 
 
@@ -293,7 +319,8 @@ modelo_selecionado = st.sidebar.radio(
 colunas_ml = st.sidebar.multiselect(
     "Colunas para a Previsão (ML)",
     options=['valor', 'posicao'],
-    default=['valor']
+    # 'valor' agora é o número do Bicho (1-25)
+    default=['valor'] 
 )
 janela_ml = st.sidebar.slider("Tamanho da Janela (linhas históricas)", 10, 200, 100)
 n_passos_previsao = st.sidebar.slider("Passos futuros para prever", 1, 10, 5)
