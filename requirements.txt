@@ -1,6 +1,5 @@
 requests
 datetime
-re
 time
 matplotlib
 sklearn
