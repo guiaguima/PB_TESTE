@@ -5,5 +5,5 @@ requests
 datetime
 re
 time
-matplotlib.pyplot
+matplotlib
 sklearn
