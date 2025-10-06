@@ -1,0 +1,15 @@
+streamlit
+pandas
+numpy
+requests
+datetime
+re
+time
+matplotlib.pyplot
+sklearn.model_selection
+sklearn.preprocessing
+sklearn.neural_network
+sklearn.svm
+sklearn.ensemble
+sklearn.linear_model
+sklearn.metrics
